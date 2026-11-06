@@ -362,6 +362,14 @@ to start writing in an insert state."
   :group 'org-noter-insertion
   :type 'hook)
 
+(defcustom org-noter-after-session-setup-hook nil
+  "Hook run once a new session is ready.
+It runs with the notes buffer current, after the windows of the
+session are set up and the document shows its starting location;
+for example, to restore annotations in the document."
+  :group 'org-noter
+  :type 'hook)
+
 (defcustom org-noter-create-session-from-document-hook '(org-noter--create-session-from-document-file-default)
   "Hook that is invoked when `org-noter' is invoked from a document."
   :group 'org-noter
@@ -819,7 +827,8 @@ Otherwise return the maximum value for point."
         (setq target-location (org-noter--parse-location-property (org-noter--get-containing-element t)))))
 
     ;; NOTE(nox): This timer is for preventing reflowing too soon.
-    (unless single
+    (if single
+        (org-noter--run-after-session-setup-hook session)
       (run-with-idle-timer
        0.05 nil
        (lambda ()
@@ -828,7 +837,14 @@ Otherwise return the maximum value for point."
          (with-current-buffer document-buffer
            (let ((org-noter--inhibit-location-change-handler t))
              (when target-location (org-noter--doc-goto-location target-location)))
-           (org-noter--doc-location-change-handler)))))))
+           (org-noter--doc-location-change-handler))
+         (org-noter--run-after-session-setup-hook session))))))
+
+(defun org-noter--run-after-session-setup-hook (session)
+  "Run `org-noter-after-session-setup-hook' in the notes buffer of SESSION."
+  (when (org-noter--valid-session session)
+    (with-current-buffer (org-noter--session-notes-buffer session)
+      (run-hooks 'org-noter-after-session-setup-hook))))
 
 (defun org-noter--valid-session (session)
   (when session

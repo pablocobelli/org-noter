@@ -50,7 +50,7 @@ The official repo for this package is https://github.com/org-noter/org-noter/tre
    (add-hook 'org-noter-after-insert-note-hook #'evil-insert-state)
    #+end_src
 
-** New options and hook
+** New options and hooks
 
    - =org-noter-same-line-tolerance= (0.006) :: vertical distance below which
      two notes are on the same line.
@@ -60,6 +60,12 @@ The official repo for this package is https://github.com/org-noter/org-noter/tre
      inserted text, in the notes window.
    - =org-noter-after-insert-note-hook= :: run in the notes window after a note
      is inserted, when the previous option is non-nil.
+   - =org-noter-after-session-setup-hook= :: run with the notes buffer current
+     once a new session is ready: its windows are set up and the document
+     shows its starting location.  Upstream has no such point: the mode hooks
+     run before the session is attached to its buffers, and the windows are set
+     up later from an idle timer.  Useful, for example, to restore highlights
+     in the document when a session starts.
 
 ** Installation
 
