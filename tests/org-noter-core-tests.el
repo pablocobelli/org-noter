@@ -13,8 +13,9 @@
 
 
           (describe "org-mode version"
-                    (it "can get the org-mode version"
-                        (expect (org-version) :to-equal "9.7.11"))
+                    ;; 9.4 is the minimum org-noter declares in Package-Requires
+                    (it "runs on the minimum org-mode version or later"
+                        (expect (version<= "9.4" (org-version)) :to-be-truthy))
                     )
           ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
           ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
