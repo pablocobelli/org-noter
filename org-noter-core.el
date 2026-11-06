@@ -340,6 +340,28 @@ others exist on the current display.'"
   :group 'org-noter-insertion
   :type 'hook)
 
+(defcustom org-noter-insert-note-continue-in-notes t
+  "When non-nil, inserting a note leaves you ready to write in it.
+
+After a note is inserted, point stays in the notes window, below
+the selected text and an empty line, and the selected text is
+highlighted in the document without leaving the notes window.
+Then `org-noter-after-insert-note-hook' runs.
+
+When nil, point is left at the start of the selected text in the
+note and, when `org-noter-highlight-selected-text' is non-nil, the
+document window is selected again."
+  :group 'org-noter-insertion
+  :type 'boolean)
+
+(defcustom org-noter-after-insert-note-hook nil
+  "Hook run in the notes window after a note is inserted.
+It runs only when `org-noter-insert-note-continue-in-notes' is
+non-nil, with point where the text of the note goes; for example,
+to start writing in an insert state."
+  :group 'org-noter-insertion
+  :type 'hook)
+
 (defcustom org-noter-create-session-from-document-hook '(org-noter--create-session-from-document-file-default)
   "Hook that is invoked when `org-noter' is invoked from a document."
   :group 'org-noter
@@ -996,6 +1018,16 @@ NOTER_PAGE)."
          (org-entry-put nil org-noter--property-auto-save-last-location "nil"))))
 
     (run-hooks 'org-noter-insert-heading-hook)))
+
+(defun org-noter--open-line-after-note-text ()
+  "Leave point on a new line below the note text just inserted.
+Empty lines separate point from the text above and from whatever
+follows, such as the next note."
+  (insert "\n\n")
+  (save-excursion
+    (unless (looking-at-p "[ \t]*$") (insert "\n"))
+    (forward-line 1)
+    (unless (or (eobp) (looking-at-p "[ \t]*$")) (insert "\n"))))
 
 (defun org-noter--narrow-to-root (ast)
   (when (and ast (not (org-noter--no-heading-p)))
@@ -2369,7 +2401,9 @@ Guiding principles for note generation
                  (when (and org-noter-insert-selected-text-inside-note note-body)
                    (if short-selected-text
                        (insert "``" note-body "''")
-                     (insert "#+BEGIN_QUOTE\n" note-body "\n#+END_QUOTE"))))
+                     (insert "#+BEGIN_QUOTE\n" note-body "\n#+END_QUOTE"))
+                   (when org-noter-insert-note-continue-in-notes
+                     (org-noter--open-line-after-note-text))))
 
              ;; NOTE(nox): Inserting a new note
              (let ((reference-element-cons (org-noter--view-info-reference-for-insertion view-info))
@@ -2403,10 +2437,13 @@ Guiding principles for note generation
                           (serialized-highlight (org-noter--get-serialized-highlight highlight-location)))
                  (org-set-property "HIGHLIGHT" serialized-highlight))
                (when note-body
-                 (save-excursion
+                 (let ((text-start (point)))
                    (if short-selected-text
                        (insert "``" note-body "''")
-                     (insert "#+BEGIN_QUOTE\n" note-body "\n#+END_QUOTE"))))
+                     (insert "#+BEGIN_QUOTE\n" note-body "\n#+END_QUOTE"))
+                   (if org-noter-insert-note-continue-in-notes
+                       (org-noter--open-line-after-note-text)
+                     (goto-char text-start))))
                (when (org-noter--session-hide-other session) (org-overview))
 
                (setf (org-noter--session-num-notes-in-view session)
@@ -2415,10 +2452,16 @@ Guiding principles for note generation
            (org-show-set-visibility t)
            (org-cycle-hide-drawers 'all)
            (org-cycle-show-empty-lines t)
-           (when org-noter-highlight-selected-text ; return to DOC window and highlight text
-             (select-frame-set-input-focus (org-noter--session-frame session))
-             (select-window (get-buffer-window (org-noter--session-doc-buffer session)))
-             (run-hook-with-args-until-success 'org-noter--add-highlight-hook major-mode highlight-location))))
+           (if org-noter-insert-note-continue-in-notes
+               (progn
+                 (when org-noter-highlight-selected-text ; highlight text in the DOC window, staying in the notes
+                   (with-selected-window (get-buffer-window (org-noter--session-doc-buffer session))
+                     (run-hook-with-args-until-success 'org-noter--add-highlight-hook major-mode highlight-location)))
+                 (run-hooks 'org-noter-after-insert-note-hook))
+             (when org-noter-highlight-selected-text ; return to DOC window and highlight text
+               (select-frame-set-input-focus (org-noter--session-frame session))
+               (select-window (get-buffer-window (org-noter--session-doc-buffer session)))
+               (run-hook-with-args-until-success 'org-noter--add-highlight-hook major-mode highlight-location)))))
        (when quit-flag
          ;; NOTE(nox): If this runs, it means the user quitted while creating a note, so
          ;; revert to the previous window.
