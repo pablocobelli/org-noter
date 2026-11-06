@@ -1,5 +1,107 @@
 The official repo for this package is https://github.com/org-noter/org-noter/tree/master
 
+* About this fork
+
+  This is [[https://github.com/pablocobelli][Pablo Cobelli]]'s fork of org-noter.  Its changes live on the
+  =reading-order= branch, on top of upstream =master= (v1.6.2); =master= here
+  mirrors upstream.  Each change comes with an option, and setting it to nil
+  restores the upstream behavior.
+
+** Notes are inserted in reading order
+
+   Upstream decides where a new note goes by comparing locations by page, then
+   top, then left, but:
+
+   - the left coordinate of the new note was dropped (in
+     =org-noter--compare-locations=), so notes on the same line compared as
+     equal and their order depended on the order in which they were taken;
+   - the top of a selection follows its tallest glyph, so words on one line
+     start at slightly different heights (0.001-0.004 of the page height) and a
+     word further right could be sorted before a word on its left;
+   - with =COLUMN_EDGES= (set with =M-x org-noter-pdf-set-columns=) the column
+     conversion dropped the left coordinate as well.
+
+   Here locations are compared by page, column, line, and then left to right.
+   Tops closer than =org-noter-same-line-tolerance= (default 0.006 of the page
+   height) are on the same line; set it to 0 for strict top-to-bottom order.
+   For two-column documents, run =M-x org-noter-pdf-set-columns= on the
+   document's root heading, so that all its notes inherit =COLUMN_EDGES=.
+
+** Notes taken on a selection are located at the selection
+
+   Upstream =org-noter-insert-note= (=i=) stores only the page, even with text
+   selected, so those notes cannot be ordered within the page.  With
+   =org-noter-insert-note-use-selection-location= (default t), a note taken on
+   selected text gets the precise location of the selection, as
+   =org-noter-insert-precise-note= (=M-i=) would.  Without a selection =i=
+   still makes a page note, placed before the precise notes of that page.
+
+** Point stays below the quoted text
+
+   Upstream leaves point at the start of the quoted text and, when it
+   highlights the selection, selects the document window again.  With
+   =org-noter-insert-note-continue-in-notes= (default t), point stays in the
+   notes window on a new line below the quote, with an empty line before it and
+   before the next note, and the highlight is added without leaving the notes
+   window.  Then =org-noter-after-insert-note-hook= runs there; evil users can
+   use it to start writing right away:
+
+   #+begin_src emacs-lisp
+   (add-hook 'org-noter-after-insert-note-hook #'evil-insert-state)
+   #+end_src
+
+** New options and hook
+
+   - =org-noter-same-line-tolerance= (0.006) :: vertical distance below which
+     two notes are on the same line.
+   - =org-noter-insert-note-use-selection-location= (t) :: notes taken with
+     =i= on a selection are located at the selection.
+   - =org-noter-insert-note-continue-in-notes= (t) :: leave point below the
+     inserted text, in the notes window.
+   - =org-noter-after-insert-note-hook= :: run in the notes window after a note
+     is inserted, when the previous option is non-nil.
+
+** Installation
+
+   With Doom Emacs, in =packages.el=.  The recipe replaces the one of the
+   =(org +noter)= module, and =unpin!= drops the commit Doom pins it to:
+
+   #+begin_src emacs-lisp
+   (package! org-noter
+     :recipe (:host github
+              :repo "pablocobelli/org-noter"
+              :branch "reading-order"
+              :files ("*.el" "modules" (:exclude "*-test-utils.el" "*-devel.el"))))
+   (unpin! org-noter)
+   #+end_src
+
+   Then run =doom sync= and restart Emacs.  With plain straight.el, pass the
+   same recipe to =straight-use-package=.
+
+** Note for Doom and evil users
+
+   In the normal state of a PDF, two bindings shadow org-noter's own keys: Doom's
+   pdf module binds =q= to =kill-current-buffer=, and evil-collection remaps
+   =evil-insert= (=i=) to =ignore= because PDFs are read-only.  To give them
+   back their org-noter meaning inside a session:
+
+   #+begin_src emacs-lisp
+   (after! org-noter
+     (map! :map org-noter-doc-mode-map
+           :n "q" #'org-noter-kill-session
+           :n "i" #'org-noter-insert-note)
+     ;; the mode turns on after the PDF buffer entered normal state
+     (add-hook 'org-noter-doc-mode-hook #'evil-normalize-keymaps))
+   #+end_src
+
+** Tests
+
+   =tests/org-noter-reading-order-tests.el= inserts the same notes in several
+   orders, in one and two columns, and checks the result;
+   =tests/org-noter-continue-in-notes-tests.el= checks where point is left and
+   the spacing around it.  On upstream code the tests that describe the changes
+   fail.
+
 * Org-noter: an interleaving/note-taking package for documents
   [[https://melpa.org/#/org-noter][file:https://melpa.org/packages/org-noter-badge.svg]]
   [[https://coveralls.io/github/org-noter/org-noter?branch=master][file:https://coveralls.io/repos/github/org-noter/org-noter/badge.svg?branch=master]]
