@@ -67,6 +67,14 @@ The official repo for this package is https://github.com/org-noter/org-noter/tre
      up later from an idle timer.  Useful, for example, to restore highlights
      in the document when a session starts.
 
+** Fixes
+
+   - Continuation arrows in the notes buffer :: upstream replaces the notes
+     buffer's whole =fringe-indicator-alist= to hide the truncation arrows,
+     which drops the entry =visual-line-mode= adds to hide the continuation
+     arrows, so wrapped lines got curly arrows in the fringe.  Here the
+     truncation entry is added in front of the existing alist instead.
+
 ** Installation
 
    With Doom Emacs, in =packages.el=.  The recipe replaces the one of the

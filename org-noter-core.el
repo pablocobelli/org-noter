@@ -817,8 +817,11 @@ Otherwise return the maximum value for point."
       ;; the base buffer (as this buffer is indirect to the base!)
       (goto-char starting-point)
       (setq buffer-file-name notes-file-path
-            org-noter--session session
-            fringe-indicator-alist '((truncation . nil)))
+            org-noter--session session)
+      ;; Hide the truncation arrows, but keep the indicators the buffer already
+      ;; sets: `visual-line-mode', for one, hides the continuation arrows, and
+      ;; replacing the whole alist brought them back.
+      (setq-local fringe-indicator-alist (cons '(truncation . nil) fringe-indicator-alist))
       (add-hook 'kill-buffer-hook 'org-noter--handle-kill-buffer nil t)
       (add-hook 'window-scroll-functions 'org-noter--set-notes-scroll nil t)
       (org-noter--set-text-properties (org-noter--parse-root (vector notes-buffer document-property-value))
