@@ -137,15 +137,21 @@ original pretty-print function."
 
 (add-to-list 'org-noter--pretty-print-location-for-title-hook #'org-noter-pdf--pretty-print-location-for-title)
 
+(defun org-noter-pdf--pdf-view-get-selection-precise-info (mode _window)
+  "Return (V-POS . H-POS), the top left corner of the selection.
+Return nil when MODE is not `pdf-view-mode' or nothing is selected."
+  (when (and (eq mode 'pdf-view-mode)
+             (pdf-view-active-region-p)
+             (cadr (pdf-view-active-region))) ; ensure the edges are ACTUALLY populated (needed for pdf-tools v1.3.0)
+    (let ((edges (cadr (pdf-view-active-region))))
+      (cons (min (nth 1 edges) (nth 3 edges))
+            (min (nth 0 edges) (nth 2 edges))))))
+
+(add-to-list 'org-noter--get-selection-precise-info-hook #'org-noter-pdf--pdf-view-get-selection-precise-info)
+
 (defun org-noter-pdf--pdf-view-get-precise-info (mode window)
   (when (eq mode 'pdf-view-mode)
-    (let (v-position h-position)
-      (if (and (pdf-view-active-region-p)
-	       (cadr (pdf-view-active-region))) ; ensure the edges are ACTUALLY populated (needed for pdf-tools v1.3.0)
-          (let ((edges (cadr (pdf-view-active-region))))
-            (setq v-position (min (nth 1 edges) (nth 3 edges))
-                  h-position (min (nth 0 edges) (nth 2 edges))))
-
+    (or (org-noter-pdf--pdf-view-get-selection-precise-info mode window)
         ;; fallback
         (let ((event nil))
           (while (not (and (eq 'mouse-1 (car event))
@@ -155,9 +161,7 @@ original pretty-print function."
                  (click-position (org-noter--conv-page-scroll-percentage
                                   (+ (window-vscroll) (cdr col-row))
                                   (+ (window-hscroll) (car col-row)))))
-            (setq v-position (car click-position)
-                  h-position (cdr click-position)))))
-      (cons v-position h-position))))
+            (cons (car click-position) (cdr click-position)))))))
 
 (add-to-list 'org-noter--get-precise-info-hook #'org-noter-pdf--pdf-view-get-precise-info)
 
@@ -411,12 +415,13 @@ underlying function is currently under discussion")
 
 (defun org-noter-pdf--convert-to-location-cons (location)
   "Encode precise LOCATION as a cons cell for note insertion ordering.
-Converts (page v . h) precise locations to (page v') such that
+Converts (page v . h) precise locations to (page v' . h) such that
 v' represents the fractional distance through the page along
 columns, so it takes values between 0 and the number of columns.
 Each column is specified by its right edge as a fractional
-horizontal position.  Output is nil for standard notes and (page
-v') for precise notes."
+horizontal position.  Keeping h orders notes on the same line of a
+column from left to right.  Output is nil for standard notes and
+\(page v' . h) for precise notes."
   (if-let* ((_ (and (consp location) (consp (cdr location))))
             (column-edges-string (when (derived-mode-p 'org-mode) (org-entry-get nil "COLUMN_EDGES" t)))
             (right-edge-list (car (read-from-string column-edges-string)))
@@ -425,7 +430,7 @@ v') for precise notes."
             (v-pos (cadr location))
             (h-pos (cddr location))
             (column-index (seq-position right-edge-list h-pos #'>=)))
-      (cons page (+ v-pos column-index))))
+      (cons page (cons (+ v-pos column-index) h-pos))))
 
 (add-to-list 'org-noter--convert-to-location-cons-hook #'org-noter-pdf--convert-to-location-cons)
 

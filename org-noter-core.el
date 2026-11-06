@@ -234,6 +234,31 @@ This setting may be overridden in a document with the function
   :group 'org-noter-navigation
   :type 'number)
 
+(defcustom org-noter-same-line-tolerance 0.006
+  "Vertical distance below which two notes count as on the same line.
+
+Precise locations measure the top of a note as a fraction of the
+page height.  The top of a selection follows its tallest glyph, so
+two selections on the same line of text can start at slightly
+different heights.  When the tops of two locations on the same
+page differ by less than this value, the notes are ordered left to
+right instead of top to bottom.
+
+Set it to 0 for strict top-to-bottom ordering."
+  :group 'org-noter-insertion
+  :type 'number)
+
+(defcustom org-noter-insert-note-use-selection-location t
+  "When non-nil, notes taken on a selection are located at the selection.
+
+With text selected in the document, `org-noter-insert-note' gives
+the new note the precise location of the selection, as
+`org-noter-insert-precise-note' would, so the note is sorted where
+the text is instead of at the top of the page.  Without a selection
+the note keeps the location of the current page."
+  :group 'org-noter-insertion
+  :type 'boolean)
+
 (defcustom org-noter-default-notes-file-names '("Notes.org")
   "List of possible names for the default notes file.
 The list is in increasing order of priority."
@@ -514,6 +539,14 @@ to add a permanent highlight to the document."
 
 (defcustom org-noter--get-precise-info-hook nil
   "TODO."
+  :group 'org-noter-module-hooks
+  :type 'hook)
+
+(defcustom org-noter--get-selection-precise-info-hook nil
+  "Functions returning the precise info of the selection in the document.
+Each one is called with the document MODE and WINDOW, and returns
+nil when nothing is selected.  Unlike the functions in
+`org-noter--get-precise-info-hook', they never prompt the user."
   :group 'org-noter-module-hooks
   :type 'hook)
 
@@ -1299,6 +1332,14 @@ Scroll units are character-based."
      (with-selected-window window
        (run-hook-with-args-until-success 'org-noter--get-precise-info-hook mode window)))))
 
+(defun org-noter--get-selection-precise-info ()
+  "Return the precise info of the selection in the document, or nil."
+  (org-noter--with-valid-session
+   (let ((window (org-noter--get-doc-window))
+         (mode (org-noter--session-doc-mode session)))
+     (with-selected-window window
+       (run-hook-with-args-until-success 'org-noter--get-selection-precise-info-hook mode window)))))
+
 (defun org-noter--show-arrow ()
   (when (and org-noter--arrow-location
              (window-live-p (aref org-noter--arrow-location 1)))
@@ -1338,51 +1379,40 @@ later form of vector is passed return 0."
        (run-hook-with-args-until-success 'org-noter--doc-goto-location-hook mode location window)
        (redisplay)))))
 
+(defun org-noter--location-cons-order (l1 l2)
+  "Return -1, 0 or 1 when location cons L1 is before, at or after L2.
+Locations are ordered by page, then top, then left, as text is
+read.  Tops that differ by less than `org-noter-same-line-tolerance'
+are on the same line, so only their left coordinates are compared."
+  (let ((p1 (org-noter--get-location-page l1))
+        (p2 (org-noter--get-location-page l2))
+        (t1 (or (org-noter--get-location-top l1) 0))
+        (t2 (or (org-noter--get-location-top l2) 0))
+        (h1 (or (org-noter--get-location-left l1) 0))
+        (h2 (or (org-noter--get-location-left l2) 0)))
+    (cond ((/= p1 p2) (if (< p1 p2) -1 1))
+          ((and (/= t1 t2) (>= (abs (- t1 t2)) org-noter-same-line-tolerance))
+           (if (< t1 t2) -1 1))
+          ((/= h1 h2) (if (< h1 h2) -1 1))
+          (t 0))))
+
 (defun org-noter--compare-location-cons (comp l1 l2)
   "Compare L1 and L2, which are location cons.
 COMP can be any of the usual comparison operators plus \">f\".
 See `org-noter--compare-locations'."
   (cl-assert (and (consp l1) (consp l2)))
-  (cond ((eq comp '=)
-         (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-              (= (org-noter--get-location-top l1) (org-noter--get-location-top l2))
-              (= (org-noter--get-location-left l1) (org-noter--get-location-left l2))))
-        ((eq comp '<)
-         (or (< (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (< (org-noter--get-location-top l1) (org-noter--get-location-top l2)))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (= (org-noter--get-location-top l1) (org-noter--get-location-top l2))
-                  (< (org-noter--get-location-left l1) (org-noter--get-location-left l2)))))
-        ((eq comp '<=)
-         (or (< (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-             (and (=  (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (<= (org-noter--get-location-top l1) (org-noter--get-location-top l2)))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (= (org-noter--get-location-top l1) (org-noter--get-location-top l2))
-                  (<= (org-noter--get-location-left l1) (org-noter--get-location-left l2)))))
-        ((eq comp '>)
-         (or (> (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (> (org-noter--get-location-top l1) (org-noter--get-location-top l2)))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (= (org-noter--get-location-top l1) (org-noter--get-location-top l2))
-                  (> (org-noter--get-location-left l1) (org-noter--get-location-left l2)))))
-        ((eq comp '>=)
-         (or (> (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (>= (org-noter--get-location-top l1) (org-noter--get-location-top l2)))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (= (org-noter--get-location-top l1) (org-noter--get-location-top l2))
-                  (>= (org-noter--get-location-left l1) (org-noter--get-location-left l2)))))
-        ((eq comp '>f)
-         (or (> (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (< (org-noter--get-location-top l1) (org-noter--get-location-top l2)))
-             (and (= (org-noter--get-location-page l1) (org-noter--get-location-page l2))
-                  (= (org-noter--get-location-top l1) (org-noter--get-location-top l2))
-                  (< (org-noter--get-location-left l1) (org-noter--get-location-left l2)))))
-        (t (error "Comparison operator %s not known" comp))))
+  (let ((order (org-noter--location-cons-order l1 l2)))
+    (cond ((eq comp '=)  (= order 0))
+          ((eq comp '<)  (< order 0))
+          ((eq comp '<=) (<= order 0))
+          ((eq comp '>)  (> order 0))
+          ((eq comp '>=) (>= order 0))
+          ((eq comp '>f)
+           (let ((p1 (org-noter--get-location-page l1))
+                 (p2 (org-noter--get-location-page l2)))
+             (or (> p1 p2)
+                 (and (= p1 p2) (< order 0)))))
+          (t (error "Comparison operator %s not known" comp)))))
 
 (defun org-noter--compare-locations (comp l1 l2)
   "Compare L1 and L2.
@@ -1394,9 +1424,10 @@ L2 or, when in the same page, if L1 is the _f_irst of the two."
         (t
          (setq l1 (or (run-hook-with-args-until-success 'org-noter--convert-to-location-cons-hook l1) l1)
                l2 (or (run-hook-with-args-until-success 'org-noter--convert-to-location-cons-hook l2) l2))
-         (if (numberp (cdr l2))
-             (org-noter--compare-location-cons comp l1 l2)
-           (org-noter--compare-location-cons comp l1 (cons (car l2) (cadr l2)))))))
+         ;; Both locations keep their left coordinate: dropping it from L2
+         ;; made notes on the same line compare as equal, so their order
+         ;; depended on the order in which they were taken.
+         (org-noter--compare-location-cons comp l1 l2))))
 
 (defun org-noter--show-note-entry (session note)
   "Show the NOTE entry and its children for this SESSION.
@@ -2234,6 +2265,9 @@ inverts the logic of the custom variable
 
 PRECISE-INFO makes the new note associated with a more specific
 location (see `org-noter-insert-precise-note' for more info).
+Without it, a note taken on selected text is located at the
+selection when `org-noter-insert-note-use-selection-location' is
+non-nil.
 
 When you insert into an existing note and have text selected on
 the document buffer, the variable
@@ -2258,7 +2292,13 @@ Guiding principles for note generation
                           (org-noter--session-doc-mode session)))
           (selected-text-p (> (length selected-text) 0))
           force-new
-          (location (org-noter--doc-approx-location (or precise-info 'interactive) (gv-ref force-new)))
+          (location (org-noter--doc-approx-location
+                     (or precise-info
+                         (and org-noter-insert-note-use-selection-location
+                              selected-text-p
+                              (org-noter--get-selection-precise-info))
+                         'interactive)
+                     (gv-ref force-new)))
           (current-view (org-noter--get-current-view)))
 
      (let* ((inhibit-quit t)
